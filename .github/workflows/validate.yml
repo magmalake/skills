@@ -1,0 +1,29 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install skills-ref==0.1.1
+      # Every skill folder must pass the Agent Skills spec's own checker, and
+      # be listed in the plugin marketplace so Claude Code installs it.
+      - name: Validate each skill
+        run: |
+          set -e
+          for skill in */SKILL.md; do
+            dir=$(dirname "$skill")
+            agentskills validate "$dir"
+            grep -q "\"./$dir\"" .claude-plugin/marketplace.json \
+              || { echo "$dir is missing from .claude-plugin/marketplace.json"; exit 1; }
+          done
+      - name: Check the marketplace file is valid JSON
+        run: python3 -m json.tool .claude-plugin/marketplace.json > /dev/null

@@ -1,0 +1,22 @@
+{
+  "name": "magmalake",
+  "owner": {
+    "name": "magmalake",
+    "url": "https://magmalake.org"
+  },
+  "metadata": {
+    "description": "Agent skills for building data pipelines in Mojo on magmalake",
+    "version": "0.1"
+  },
+  "plugins": [
+    {
+      "name": "skills",
+      "description": "All magmalake skills",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./mojo-data-performance"
+      ]
+    }
+  ]
+}
