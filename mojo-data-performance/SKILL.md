@@ -1,6 +1,6 @@
 ---
 name: mojo-data-performance
-description: Write fast Mojo data pipelines, and find out where their time goes without a second implementation to compare against. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, orca), or that filters, groups, joins or aggregates rows; when a pipeline seems slow; or before claiming a speedup. Pairs with Modular's mojo-syntax skill.
+description: Write fast Mojo data pipelines, and find out where their time goes without a second implementation to compare against. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, orca), or that filters, groups, joins or aggregates rows; when a pipeline seems slow; or before claiming a speedup. Pairs with Modular's mojo-syntax skill; for readers, writers, codecs and benchmark discipline, use writing-performant-data-code as well.
 license: Apache-2.0
 metadata:
   author: magmalake
@@ -20,6 +20,12 @@ A data pipeline's time goes to three places: reading and decoding the data,
 the work done on each row, and waiting (on storage, on a lock, or on one
 busy thread). Decoding is usually already tuned in the libraries. The work on
 each row is what you write, and it is where a careless loop costs 2–3×.
+
+This skill is about the code that consumes a scan's batches. For making
+the reader, writer or codec itself faster, and for how to take a benchmark
+number you can trust, see
+[`writing-performant-data-code`](../writing-performant-data-code/SKILL.md)
+in this repository.
 
 ## First, measure where the time goes
 

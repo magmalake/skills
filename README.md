@@ -45,6 +45,13 @@ agent's skills folder; for Claude Code that is `~/.claude/skills/`.
   against. Every rule carries the measurement behind it, from magmalake's
   own benchmarks.
 
+- [`writing-performant-data-code`](writing-performant-data-code/SKILL.md):
+  how to make columnar readers, writers, decoders and codecs fast, and how to
+  produce benchmark numbers that survive being checked. It covers
+  measurement discipline, the tests that catch a fast path that never runs,
+  and Mojo's ownership and threading hazards. It used to live in
+  magmalake/.github.
+
 ## Adding a skill
 
 Each skill is a folder at the top level with a `SKILL.md`, and longer
