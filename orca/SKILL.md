@@ -10,7 +10,7 @@ metadata:
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
 Every line here is loaded into an agent's context, so stay brief, but write
 whole phrases a newcomer can follow: a list of bare nouns is not brief, it is
-cryptic. Every API shown must exist in orca as published (orca-mojo 0.2.0),
+cryptic. Every API shown must exist in orca as published (orca-mojo 0.3.0),
 copied from its source or examples. Put long material in references/.
 -->
 
@@ -24,7 +24,7 @@ the scheduler, the UI and registration.
 
 ## Install
 
-orca is the mojoshelf tin `orca-mojo` (0.2.0, Mojo 1.2.0). A new project
+orca is the mojoshelf tin `orca-mojo` (0.3.0, Mojo 1.2.0). A new project
 needs Modular's channel, pixi's build preview and the compiler first:
 
 ```sh

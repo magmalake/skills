@@ -39,7 +39,7 @@ pixi shelf add orca-mojo
 pixi add postgresql                          # a local Postgres, for development
 ```
 
-- **`pixi shelf add orca-mojo`** (orca 0.2.0) adds orca and all it needs
+- **`pixi shelf add orca-mojo`** (orca 0.3.0) adds orca and all it needs
   to `pixi.toml`, including `dista-mojo`, `iceberg-mojo`, `flare_mlake`,
   `objectstore-mojo` and `json_mlake`, so those import at once. Add other
   tins with `pixi shelf add <tin>`; mojoshelf may also want the channel
@@ -231,8 +231,8 @@ scripts/with-postgres.sh sh -c '
 
 ## Deploy to AWS
 
-**`orca aws` arrives in orca-mojo 0.3.0;** until then build orca from its
-main branch. `./build/orca aws` prints its usage when it is there.
+`orca aws` is in orca-mojo 0.3.0 and later; `./build/orca aws` prints its
+usage.
 
 
 1. **Log in** with `aws login` (or set `AWS_PROFILE`); `docker` must run.
