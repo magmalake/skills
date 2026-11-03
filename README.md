@@ -39,18 +39,13 @@ agent's skills folder; for Claude Code that is `~/.claude/skills/`.
 
 ## Skills
 
-- [`mojo-data-performance`](mojo-data-performance/SKILL.md): how to write
-  the per-row loops and the pipeline around them so they run fast, and how
-  to find where the time goes without a second implementation to compare
-  against. Every rule carries the measurement behind it, from magmalake's
-  own benchmarks.
-
-- [`writing-performant-data-code`](writing-performant-data-code/SKILL.md):
-  how to make columnar readers, writers, decoders and codecs fast, and how to
-  produce benchmark numbers that survive being checked. It covers
-  measurement discipline, the tests that catch a fast path that never runs,
-  and Mojo's ownership and threading hazards. It used to live in
-  magmalake/.github.
+- [`mojo-data-performance`](mojo-data-performance/SKILL.md): how to make
+  Mojo data code fast, from a pipeline's per-row loops over record batches
+  down to the readers, writers and codecs under them; how to find where the
+  time goes without a second implementation to compare against; and how to
+  take benchmark numbers that survive being checked. Every rule carries the
+  measurement behind it, from magmalake's own benchmarks. It replaces
+  `writing-performant-data-code`, which is now part of it.
 
 ## Adding a skill
 
