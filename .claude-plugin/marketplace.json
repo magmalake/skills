@@ -15,8 +15,7 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./mojo-data-performance",
-        "./writing-performant-data-code"
+        "./mojo-data-performance"
       ]
     }
   ]

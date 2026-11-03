@@ -1,10 +1,10 @@
 ---
 name: mojo-data-performance
-description: Write fast Mojo data pipelines, and find out where their time goes without a second implementation to compare against. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, orca), or that filters, groups, joins or aggregates rows; when a pipeline seems slow; or before claiming a speedup. Pairs with Modular's mojo-syntax skill; for readers, writers, codecs and benchmark discipline, use writing-performant-data-code as well.
+description: Write fast Mojo data code and find out where its time goes, from the per-row loops of a pipeline down to the readers, writers and codecs under it, and take benchmark numbers that survive being checked. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, orca), or that filters, groups, joins or aggregates rows; when making a parser, reader, writer, encoder or codec faster; when writing a benchmark or comparing against pyarrow, parquet-cpp, arrow-rs or Ray; when a number looks too good or moves between runs; or before claiming a speedup. Pairs with Modular's mojo-syntax skill.
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.1"
+  version: "0.2"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
@@ -21,11 +21,9 @@ the work done on each row, and waiting (on storage, on a lock, or on one
 busy thread). Decoding is usually already tuned in the libraries. The work on
 each row is what you write, and it is where a careless loop costs 2–3×.
 
-This skill is about the code that consumes a scan's batches. For making
-the reader, writer or codec itself faster, and for how to take a benchmark
-number you can trust, see
-[`writing-performant-data-code`](../writing-performant-data-code/SKILL.md)
-in this repository.
+Most of this file is about the code that consumes a scan's batches. For
+the reader, writer or codec underneath, and for taking a number you can
+trust, see the last two sections and their references.
 
 ## First, measure where the time goes
 
@@ -75,6 +73,49 @@ local table, one thread). The code is in
 
 [references/case-studies.md](references/case-studies.md) tells each of these
 stories, with what gave the problem away.
+
+## Readers, writers and codecs
+
+When the decoding itself is the slow part, the rules are mostly about not
+doing work that gets thrown away. The details and their numbers are in
+[references/readers-and-codecs.md](references/readers-and-codecs.md).
+
+- **Check that each fast path's gate can be met** by the callers that reach
+  it, and prove by instrumentation that it runs. A vectorized path whose
+  gate no list column could meet left one 9 KiB column at 43% of a read.
+- **Don't compute what a later decision usually discards.** Building a
+  dictionary only to choose plain encoding was 67% of an int64 column write;
+  removing it made the write 3.3× faster with byte-identical output.
+- **Borrow instead of copying,** and decode straight into the final layout,
+  such as definition levels into the validity bitmap.
+- **Work in runs** where the data has them: at 1% nulls, about 250
+  `memmove`s replace about 25,000 per-slot branches.
+- **Know when a stage is already at memory bandwidth:** one that moved
+  18.3 MB in and out in 1.2 ms, about 30 GB/s, could only be skipped.
+- **Find the slowest item before adding threads.** Splitting by column chunk
+  capped one read at 1.39×, because one fat column ran the whole time.
+
+Test the optimization as well as the answer: break it on purpose and check
+that a test fails ([references/testing-optimizations.md](references/testing-optimizations.md)).
+Mojo's own traps, such as values dying at their last use and
+`MutUntrackedOrigin`, are in [references/mojo-hazards.md](references/mojo-hazards.md).
+
+## Taking a number you can trust
+
+[references/measurement.md](references/measurement.md) has the full rules.
+The ones that changed conclusions in magmalake:
+
+- **Report the median (p50) with p90 beside it, never the mean alone.** One
+  slow first call moved a mean by 30% and the p50 not at all.
+- **Build the benchmark ahead of time; never time it under `mojo run`.** The
+  JIT inflated one benchmark 1.9×.
+- **Check the machine held still.** The same benchmark took 31 ms idle and
+  89 ms beside 16 busy threads.
+- **Name the reference's API and thread count.** `pq.read_table` is
+  pyarrow's dataset scanner, not parquet-cpp's read path, and pyarrow's
+  thread setting moved one file's read 2.9×.
+- **When two numbers disagree, check they were produced the same way**
+  before explaining the difference.
 
 ## Before claiming a speedup
 
