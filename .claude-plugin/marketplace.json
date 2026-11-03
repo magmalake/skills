@@ -5,8 +5,8 @@
     "url": "https://magmalake.org"
   },
   "metadata": {
-    "description": "Agent skills for building data pipelines in Mojo on magmalake",
-    "version": "0.1"
+    "description": "Agent skills for building data pipelines and apps in Mojo on magmalake",
+    "version": "0.2"
   },
   "plugins": [
     {
@@ -15,7 +15,10 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./mojo-data-performance"
+        "./mojo-data-performance",
+        "./orca",
+        "./dista",
+        "./magmalake-apps"
       ]
     }
   ]
