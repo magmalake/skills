@@ -1,9 +1,10 @@
 # magmalake skills
 
-Agent skills for building data pipelines in Mojo on
-[magmalake](https://magmalake.org): reading Iceberg and Parquet tables, and
-filtering, grouping and aggregating their rows, with
-[dista](https://github.com/magmalake/dista.mojo) and the magmalake libraries.
+Agent skills for building data pipelines and apps in Mojo on
+[magmalake](https://magmalake.org): orchestrating them with
+[orca](https://github.com/magmalake/orca.mojo), distributing them with
+[dista](https://github.com/magmalake/dista.mojo), reading and writing Iceberg
+and Parquet tables fast, and deploying a project to AWS.
 They follow the [Agent Skills spec](https://agentskills.io/specification), so
 any coding agent that reads skills can use them.
 
@@ -30,7 +31,7 @@ npx skills add magmalake/skills
 
 This puts the skills where your agent looks for them. Update them later with
 `npx skills update`, or install one at a time with
-`npx skills add magmalake/skills --skill mojo-data-performance`.
+`npx skills add magmalake/skills --skill orca`.
 
 ### By hand
 
@@ -46,6 +47,21 @@ agent's skills folder; for Claude Code that is `~/.claude/skills/`.
   take benchmark numbers that survive being checked. Every rule carries the
   measurement behind it, from magmalake's own benchmarks. It replaces
   `writing-performant-data-code`, which is now part of it.
+
+- [`orca`](orca/SKILL.md): pipelines in Mojo with orca: steps, partitions
+  by month, day or name (keyed), schedules and sensors, steps that call
+  dista, Iceberg tables with pinned reads and commits a retry recognises,
+  and the `orca` command: registering, backfilling, the scheduler, the UI,
+  the runners, autoscaling and secrets.
+- [`dista`](dista/SKILL.md): distributed Mojo with dista: tasks and the
+  refs they return, actors and checkpoints, local and cluster mode, the
+  `dista` command, draining and autoscaling.
+- [`magmalake-apps`](magmalake-apps/SKILL.md): a whole project on
+  magmalake: its layout, a lake on Iceberg over S3, a flare app reading it,
+  developing locally, and deploying to AWS with `orca aws`.
+
+For finding and adding the libraries these use, install mojoshelf's own
+skills too: `npx skills add mojoshelf/mojoshelf --skill mojoshelf-consume`.
 
 ## Adding a skill
 
