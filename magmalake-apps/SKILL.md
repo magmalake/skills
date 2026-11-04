@@ -4,7 +4,7 @@ description: Build a data application on magmalake as one Mojo project, with pip
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.1"
+  version: "0.2"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
@@ -42,10 +42,17 @@ pixi add postgresql                          # a local Postgres, for development
 - **`pixi shelf add orca-mojo`** (orca 0.3.0) adds orca and all it needs
   to `pixi.toml`, including `dista-mojo`, `iceberg-mojo`, `flare_mlake`,
   `objectstore-mojo` and `json_mlake`, so those import at once. Add other
-  tins with `pixi shelf add <tin>`; mojoshelf may also want the channel
-  `https://repo.prefix.dev/modular-community`.
+  tins with `pixi shelf add <tin>`. It takes minutes and prints every
+  tin's build log; it hasn't hung.
 - **`linux-aarch64` must be in the platforms**, or `orca aws push` refuses
   to build; the image installs with `pixi install --locked`.
+- **Reading a tin's source:** the environment holds only compiled
+  `.mojoc` packages for most tins (flare and json are the exceptions), so
+  read the source on GitHub (`https://github.com/magmalake/<repo>` at the
+  `rev` in `pixi.toml`) or in pixi's git cache:
+  `ls -d ~/Library/Caches/rattler/cache/git-v0/checkouts/*/<rev's first 7>*`
+  on macOS, `~/.cache/rattler/cache/git-v0/checkouts/` on Linux. File paths
+  cited in these skills are in those checkouts.
 
 ## Layout
 
@@ -196,8 +203,22 @@ def main() raises:
   container name on that port; `127.0.0.1` is unreachable from it.
 - **Every request scans the table again** (from S3, on one event loop):
   fine for a small console. For state, write a struct conforming to
-  `Handler`, as orca's UI does (`struct Ui` in `src/orca/ui.mojo`).
+  `Handler`, as orca's UI does (`struct Ui` in `src/orca/ui.mojo`, in
+  [orca's repository](https://github.com/magmalake/orca.mojo)).
 - **Path parameters:** `r.get("/repos/:id", repo)`, then `req.param("id")`.
+- **Downloading with flare's `HttpClient`:** a `Response` can't give up
+  its body (`return resp.body^` fails with "destroyed out of the middle of
+  a value"). Swap it out; `swap` is a builtin, no import:
+
+  ```mojo
+  from flare.http import HttpClient, Request
+
+  var c = HttpClient(timeout_ms=120_000)
+  var resp = c.send(Request(method="GET", url=url))
+  var body = List[UInt8]()
+  swap(body, resp.body)
+  return body^
+  ```
 - **On AWS an app gets only** `AWS_REGION`, `ORCA_WAREHOUSE`,
   `ORCA_PUBLIC_WAREHOUSE` and `PORT`, and reads S3 with the control
   instance's role. It reads the lake, never orca's database.
@@ -296,3 +317,7 @@ the UI, backfills on AWS and troubleshooting.
 | A step writes with iceberg directly | a retry commits the data twice | use `orca.tables.append` or `commit` |
 | The app listens on `127.0.0.1` | Caddy gets no answer on AWS | `0.0.0.0:$PORT` |
 | Pushing uncommitted changes | the image holds them but is tagged and linked as the last commit | commit first |
+| `splitlines()` on tab-separated text, such as `git log --numstat` | Mojo 1.2.0 also splits on `\t`: `"1\t2\tf\n3\t4\tb".splitlines()` has 6 parts, so rows silently don't match | `split("\n")` |
+| `b.num_rows()` on a `RecordBatch` | `'Int' does not implement the '__call__' method` | `RecordBatch.num_rows` is a field; `ScanResult.num_rows()` (from `to_table()`) is a method |
+| Reading `.gz` with `deflate-mojo` | it's raw DEFLATE only; no tin reads gzip framing | parse the gzip header yourself and call `inflate_at`: [references/lake.md](references/lake.md#gzip-input) |
+| A `for` loop in a pixi task | `Unsupported reserved word`: pixi's task shell has no loops | put the loop in a script and run that from the task ([references/local.md](references/local.md#build)) |

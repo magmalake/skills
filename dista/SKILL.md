@@ -4,7 +4,7 @@ description: Write and run distributed Mojo programs with dista, magmalake's Ray
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.1"
+  version: "0.2"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
@@ -28,6 +28,14 @@ says how many it wants. Kubernetes, a shell loop or orca starts and stops
 them. It also doesn't rebuild results lost with a dead worker (no lineage
 reconstruction): the job fails, naming the result, and an orchestrator runs
 it again.
+
+The installed environment holds dista only as a compiled `dista.mojoc`.
+Read its source on GitHub,
+[magmalake/dista.mojo](https://github.com/magmalake/dista.mojo), at the
+`rev` your `pixi.toml` pins, or in pixi's git cache
+(`ls -d ~/Library/Caches/rattler/cache/git-v0/checkouts/*/<rev's first 7>*`
+on macOS, `~/.cache/rattler/...` on Linux). File paths cited here are in
+that checkout.
 
 ```sh
 pixi shelf add dista-mojo    # brings arrow-mlake, memory-region and objectstore
@@ -277,7 +285,12 @@ def month_trips(mut ctx: Ctx, m: Month) raises -> Int:
 comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks, workers=3]
 ```
 
-The full program is `examples/fanout.mojo` in orca.mojo.
+The full program is `examples/fanout.mojo` in
+[orca.mojo](https://github.com/magmalake/orca.mojo).
+
+orca runs a run's steps in order and a mapped step's partitions one after
+another, so a step that calls one task and waits for it is serial. Send
+all of a step's work with `rt.remote` first, then `rt.get` each ref.
 
 ## Common mistakes
 
