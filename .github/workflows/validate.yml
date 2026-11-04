@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The vendored skills follow their upstream; this notices when it moves.
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
   skills:
@@ -26,4 +29,15 @@ jobs:
               || { echo "$dir is missing from .claude-plugin/marketplace.json"; exit 1; }
           done
       - name: Check the marketplace file is valid JSON
-        run: python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
+        run: |
+          python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
+          python3 -m json.tool skills.sh.json > /dev/null
+
+  vendored:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # vendor/ holds Modular's mojo-syntax and mojoshelf's mojoshelf-consume,
+      # copied unchanged for `npx skills add`. They must match upstream main.
+      - name: Check vendored skills match upstream
+        run: scripts/sync-vendored.sh --check
