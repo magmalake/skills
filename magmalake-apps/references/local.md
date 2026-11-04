@@ -7,17 +7,28 @@ command with `pixi run`.
 
 ## Build
 
-Build the way the image does, every program with `-I src`:
+Build the way the image does, every program with `-I src`. pixi's task
+shell has no `for` (a task with one fails with `Unsupported reserved
+word`), so put the loops in `scripts/build.sh`:
 
 ```sh
+#!/bin/sh
+set -e
 mkdir -p build
 mojo build bin/scheduler.mojo -o build/orca
 for p in pipelines/*.mojo; do mojo build -I src "$p" -o "build/$(basename "$p" .mojo)"; done
 for a in bin/*.mojo; do n=$(basename "$a" .mojo); [ "$n" = scheduler ] || mojo build -I src "$a" -o "build/$n"; done
 ```
 
-A pixi task per program (`[tasks]` in `pixi.toml`) saves typing, as orca's
-own `pixi.toml` does.
+and run it from a task, `pixi run build`:
+
+```toml
+[tasks]
+build = "sh scripts/build.sh"
+```
+
+Or give each program a task of its own and a `build` task with
+`depends-on = [...]` listing them.
 
 ## A pipeline on its own
 
@@ -37,7 +48,8 @@ lists runs and `./build/days resume <run>` finishes one that stopped.
 
 They need Postgres. `pixi add postgresql` gives `initdb`, `pg_ctl` and
 `createdb` from conda-forge. orca's `scripts/with-postgres.sh` (copy it from
-orca's repository; the tin doesn't ship it) starts a throwaway server on a
+[orca's repository](https://github.com/magmalake/orca.mojo); the tin doesn't
+ship it) starts a throwaway server on a
 Unix socket, exports `ORCA_DATABASE_URL`, runs a command and removes the
 server when it ends:
 

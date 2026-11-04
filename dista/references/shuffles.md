@@ -2,7 +2,8 @@
 
 A shuffle's map task makes one partition per reducer, and each reducer takes
 its partition number beside every map task's part. dista has one task shape
-for each (from `src/dista/task.mojo`):
+for each (from `src/dista/task.mojo` in
+[dista.mojo's repository](https://github.com/magmalake/dista.mojo)):
 
 ```
 TaskMany[A_, X, f: def(A_) thin raises -> Seq[X]]
@@ -48,6 +49,6 @@ def main() raises:
   half of its inputs' bytes; an all-to-all reducer's inputs are spread
   evenly, so it is placed as before.
 
-`tests/test_shuffle.mojo` runs a whole group-by this way: 8 map tasks
+dista.mojo's `tests/test_shuffle.mojo` runs a whole group-by this way: 8 map tasks
 partition 20,000 rows each by key for 4 reducers, and the sums are checked
 against one process. `deploy/shuffle.mojo` is the benchmark version.

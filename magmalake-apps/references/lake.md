@@ -56,10 +56,12 @@ raises when the variable isn't set; `load` falls back to `build/warehouse`.
 ## Schemas and partitions
 
 A schema is Iceberg's JSON, with a field id for each column. Types used in
-magmalake code: `int`, `long`, `double`, `string`, `timestamp`, `date`,
-`boolean`, and nested `struct`, `list` and `map`.
+magmalake code: `int`, `long`, `double`, `string`, `timestamp`,
+`timestamptz`, `date`, `boolean`, and nested `struct`, `list` and `map`.
 
-A partitioned table, from orca's `examples/taxi/tlc.mojo` (month of field 2):
+A partitioned table, from `examples/taxi/tlc.mojo` in
+[orca's repository](https://github.com/magmalake/orca.mojo) (month of
+field 2):
 
 ```mojo
 from iceberg.transforms import PartitionField, PartitionSpec, parse_transform
@@ -87,8 +89,8 @@ Pass it as `ensure_table(ctx, dataset, schema, spec())`. The arguments of
   snapshot and returns its id. A retry of the step finds the snapshot its
   earlier attempt committed and returns it instead of writing again.
 - **`commit(ctx, table, operation, files)`** commits data files you wrote
-  yourself, such as a compaction's `OP_REPLACE` (see orca's
-  `examples/taxi/taxi.mojo`, `compact`). Call `find_commit(ctx, table)`
+  yourself, such as a compaction's `OP_REPLACE` (see `compact` in orca's
+  `examples/taxi/taxi.mojo`). Call `find_commit(ctx, table)`
   first so a retry doesn't write the files again.
 - **`scan(ctx, table)`** reads a declared input at a pinned snapshot: a
   retry or a resume sees the same data as the first attempt.
@@ -108,7 +110,17 @@ from iceberg.values import Datum
     var batch = batch_of([day^, events^])
 ```
 
-Nested columns take one JSON value per row, from iceberg.mojo's README:
+A `timestamptz` value is microseconds since the epoch, as a `Datum` of
+that kind (`P_TIMESTAMP` for a `timestamp` without zone):
+
+```mojo
+from iceberg.types import P_TIMESTAMPTZ
+
+    at.add(Datum.integral(P_TIMESTAMPTZ, micros))   # micros: Int64
+```
+
+Nested columns take one JSON value per row, from
+[iceberg.mojo's README](https://github.com/magmalake/iceberg.mojo):
 
 ```mojo
 from iceberg.batch import ColumnBuilder, NestedBuilder, batch_of_columns
@@ -122,8 +134,58 @@ from iceberg.batch import ColumnBuilder, NestedBuilder, batch_of_columns
 
 Rows already in Parquet come as batches from
 `ParquetReader[AllCodecs].open(path)` (`has_next()`, `read_batch()`), as in
-`examples/taxi/tlc.mojo`; append them as they are. Iceberg's writer casts
-each column to the table's type.
+orca's `examples/taxi/tlc.mojo`; append them as they are. Iceberg's writer
+casts each column to the table's type. A `RecordBatch`'s row count is the
+field `b.num_rows`.
+
+## Gzip input
+
+`deflate-mojo` is raw DEFLATE (RFC 1951) only, and no tin reads gzip's
+framing. Read the RFC 1952 header yourself, inflate the body with
+`inflate_at`, which reports where the stream ended, and skip the 8-byte
+trailer; repeat for concatenated members (GH Archive's files have them).
+It decompressed 690 MB of JSON in 0.8 s on an M-series Mac:
+
+```mojo
+from deflate import inflate_at
+
+def gunzip(data: Span[UInt8, _]) raises -> List[UInt8]:
+    var out = List[UInt8]()
+    var pos = 0
+    var n = len(data)
+    while pos + 18 <= n:
+        if data[pos] != 0x1F or data[pos + 1] != 0x8B:
+            if len(out) > 0:
+                break  # trailing garbage after a complete member
+            raise Error("gunzip: not a gzip stream")
+        if data[pos + 2] != 8:
+            raise Error("gunzip: unknown compression method")
+        var flg = Int(data[pos + 3])
+        var i = pos + 10
+        if flg & 4:  # FEXTRA
+            var xlen = Int(data[i]) | (Int(data[i + 1]) << 8)
+            i += 2 + xlen
+        if flg & 8:  # FNAME
+            while i < n and data[i] != 0:
+                i += 1
+            i += 1
+        if flg & 16:  # FCOMMENT
+            while i < n and data[i] != 0:
+                i += 1
+            i += 1
+        if flg & 2:  # FHCRC
+            i += 2
+        var used = 0
+        var part = inflate_at(data[i:], used)
+        if len(out) == 0:
+            out = part^
+        else:
+            out.extend(Span(part))
+        pos = i + used + 8  # CRC32 and ISIZE
+    return out^
+```
+
+It doesn't check the CRC32.
 
 ## Reading in an app
 
@@ -137,7 +199,8 @@ var rows = (
 )
 ```
 
-The result (`ScanResult`) has `num_rows()`, `num_columns()`, `name(i)`,
+The result (`ScanResult`) has `num_rows()` (a method, unlike
+`RecordBatch.num_rows`), `num_columns()`, `name(i)`,
 `value(row, col)` (a `Datum`; `.repr_()` prints it, `.valid` is false for
 null), `cell(row, col)` (one value as JSON), `to_json()` and `to_csv()`.
 `to_batches()` returns `List[RecordBatch]` instead, for large tables.
@@ -147,7 +210,8 @@ reloads the table's current metadata.
 Filters are JSON S-expressions: `["=", "col", v]`, `["<", ...]`,
 `["in", "col", [...]]`, `["is-null", "col"]`, `["starts-with", "col", "p"]`,
 `["and", f, g]`, `["or", f, g]`, `["not", f]`. Literals are typed by the
-column. iceberg.mojo's README has the whole grammar.
+column. [iceberg.mojo's README](https://github.com/magmalake/iceberg.mojo)
+has the whole grammar.
 
 ## Readers outside the project
 

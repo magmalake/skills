@@ -1,7 +1,9 @@
 # Running dista: environment, metrics, Kubernetes, a provider loop
 
-All of this is from dista.mojo 0.2.0: `src/dista/*.mojo`, `DESIGN.md`,
-`deploy/` and `tests/*.sh`.
+All of this is from dista.mojo 0.2.0's repository
+([magmalake/dista.mojo](https://github.com/magmalake/dista.mojo); the
+installed tin is compiled only): `src/dista/*.mojo`, `DESIGN.md`, `deploy/`
+and `tests/*.sh`.
 
 ## Environment variables
 

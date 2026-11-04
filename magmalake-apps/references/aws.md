@@ -1,8 +1,9 @@
 # Deploying with `orca aws`
 
-`orca aws` (orca's `src/orca/aws.mojo`) drives the `aws` and `docker`
-commands you already have, logged in with `aws login` or `AWS_PROFILE`. It is
-in orca-mojo 0.3.0 and later. Its usage, as it prints it:
+`orca aws` (`src/orca/aws.mojo` in
+[orca's repository](https://github.com/magmalake/orca.mojo)) drives the
+`aws` and `docker` commands you already have, logged in with `aws login` or
+`AWS_PROFILE`. It is in orca-mojo 0.3.0 and later. Its usage, as it prints it:
 
 ```
 orca aws up --email ADDR [--hostname H] [--console-hostname H] [--budget N]

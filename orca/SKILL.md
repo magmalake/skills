@@ -4,7 +4,7 @@ description: Write, run and schedule data pipelines in Mojo with orca, magmalake
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.1"
+  version: "0.2"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
@@ -34,6 +34,19 @@ pixi add "mojo-compiler==1.2.0"
 pixi workspace platform add linux-aarch64   # for images on AWS Graviton
 pixi shelf add orca-mojo                     # brings dista-mojo, iceberg-mojo, ...
 ```
+
+`pixi shelf add` takes minutes and prints every tin's build log as it
+builds them; it hasn't hung.
+
+**Reading orca's source:** the environment holds only compiled `.mojoc`
+packages for most tins (`orca.mojoc`, `iceberg.mojoc`, ...), so there is
+nothing to read under `.pixi/envs/`. Read a tin on GitHub at the `rev`
+its `pixi.toml` line pins (orca is
+[magmalake/orca.mojo](https://github.com/magmalake/orca.mojo)), or in
+pixi's git cache, one directory per repository and revision:
+`ls -d ~/Library/Caches/rattler/cache/git-v0/checkouts/*/<rev's first 7>*`
+on macOS, `~/.cache/rattler/cache/git-v0/checkouts/` on Linux. File paths
+the skills cite, such as orca's `examples/taxi/taxi.mojo`, are in there.
 
 The project's `orca` command is two lines of its own, in a file **not**
 named `orca.mojo` (that file would be the module `orca` and hide the
@@ -98,6 +111,9 @@ def main() raises:
   takes any IANA zone, e.g. `Cron["30 2 * * *", "America/New_York"]`.
   `catchup=False` starts only the latest fire a scheduler missed.
 - `ctx.log(msg)` writes to the attempt's log, which the UI shows.
+- **A run is sequential:** its steps run in order, and a mapped step runs
+  its partitions one after another. Parallelism comes from dista tasks
+  inside a step (below), or from several runs at once (`max_runs=`).
 
 Every pipeline binary has orca's command line:
 
@@ -174,6 +190,20 @@ comptime Report = Step["report", Int64, Int, report, Mapped, after=Load,
 - `append(ctx, table, batches)` commits `List[RecordBatch]` as one snapshot
   and returns its ID. A retry after a crash finds the snapshot its attempt
   already made instead of writing the data twice.
+- **A step may commit several times** (an hour at a time, say). Each
+  commit is numbered, and a retry recognises the ones its earlier attempt
+  made, in the same order. `find_commit(ctx, table)` returns the snapshot
+  of the step's *next* commit if an earlier attempt made it, else -1; to
+  skip work already committed, step past it with an empty `append`:
+
+  ```mojo
+  var done = 0
+  while done < len(hours) and find_commit(ctx, table) >= 0:
+      _ = append(ctx, table, List[RecordBatch]())   # returns the old snapshot
+      done += 1
+  ```
+
+  A run without `ORCA_DATABASE_URL` never finds earlier commits.
 - `scan(ctx, table(ctx, "lake.events"))` is a `TableScan` at a **pinned**
   snapshot: a retry or resume sees the same data. Then `.to_batches()`.
 
@@ -201,6 +231,34 @@ refused. A keyed pipeline has no calendar, so `schedule=` doesn't compile
 with it. With `sensor=True`, the scheduler starts runs when a dataset the
 pipeline reads gets a new snapshot, for the keys that are new.
 
+**Register sensors before the data they sense.** A sensor counts from when
+it's registered: the snapshots its datasets have then are recorded as seen
+without a run. Use `backfill` or `rebuild` for what came before.
+
+**A keyed run's work in parallel:** make the pipeline's first step a
+`Gather` over the run's keys, and send each key to a dista task (a mapped
+step would take its keys one at a time). An excerpt, with
+`ReadHistory = Task[String, History, read_history]` in `HistoryTasks`:
+
+```mojo
+def histories(mut ctx: Ctx, keys: Seq[Name]) raises -> Int:
+    ref rt = ctx.runtime[HistoryTasks]()
+    var refs = List[ObjectRef[History]]()
+    for i in range(len(keys)):
+        refs.append(rt.remote[ReadHistory](keys.items[i].text))
+    for i in range(len(refs)):
+        var h = rt.get(refs[i])
+        ...                                # build columns, then one append
+    return len(refs)
+
+comptime Histories = Step["histories", Seq[Name], Int, histories, Gather,
+                          writes=["lake.commits"]]
+comptime RepoHistory = Pipeline["history", Histories, tasks=HistoryTasks,
+    partitions=Keyed["lake.repos", "repo"], keys_per_run=50, sensor=True]
+```
+
+One key's failure is then yours to log or raise; orca sees one step.
+
 ## The `orca` command
 
 Needs `ORCA_DATABASE_URL` (a Postgres the scheduler and runs share):
@@ -215,6 +273,17 @@ Needs `ORCA_DATABASE_URL` (a Postgres the scheduler and runs share):
 ./build/orca lineage lake.events              # what made a dataset's snapshot, and what it made
 ./build/orca rebuild lake.events 2024-03      # rerun everything downstream, in order
 ```
+
+**Scripting the UI's actions:** each is a form `POST`, refused unless its
+`Origin` is the UI's own. A rerun names the step to start from:
+
+```sh
+curl -X POST -H "Origin: http://127.0.0.1:8270" -d step=load \
+  http://127.0.0.1:8270/runs/2/rerun
+```
+
+Once any user exists, the action also needs the session cookie from
+`POST /login`.
 
 Build pipelines with `-D ORCA_SOURCE=$(git remote get-url origin) -D
 ORCA_COMMIT=$(git rev-parse HEAD)` and each run links the exact commit it

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Agent skills for building data pipelines and apps in Mojo on magmalake",
-    "version": "0.2"
+    "version": "0.3"
   },
   "plugins": [
     {
