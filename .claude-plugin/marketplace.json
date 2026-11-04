@@ -6,12 +6,15 @@
   },
   "metadata": {
     "description": "Agent skills for building data pipelines and apps in Mojo on magmalake",
-    "version": "0.3"
+    "version": "0.4"
+  },
+  "renames": {
+    "skills": "magmalake"
   },
   "plugins": [
     {
-      "name": "skills",
-      "description": "All magmalake skills",
+      "name": "magmalake",
+      "description": "All magmalake skills, plus Modular's mojo-syntax and mojoshelf's mojoshelf-consume",
       "source": "./",
       "strict": false,
       "skills": [
@@ -19,7 +22,31 @@
         "./orca",
         "./dista",
         "./magmalake-apps"
+      ],
+      "dependencies": [
+        "mojo-syntax",
+        "mojoshelf-consume"
       ]
+    },
+    {
+      "name": "mojo-syntax",
+      "description": "Modular's mojo-syntax skill, fetched from github.com/modular/skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modular/skills.git",
+        "path": "mojo-syntax"
+      },
+      "skills": "."
+    },
+    {
+      "name": "mojoshelf-consume",
+      "description": "mojoshelf's skill for finding and adding tins, fetched from github.com/mojoshelf/mojoshelf",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/mojoshelf/mojoshelf.git",
+        "path": "skills/mojoshelf-consume"
+      },
+      "skills": "."
     }
   ]
 }
