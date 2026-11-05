@@ -1,0 +1,65 @@
+name: sync-vendored
+
+# Every Monday, after validate's own check, copy the vendored skills from
+# their upstream main (scripts/sync-vendored.sh) and, when they moved, open
+# or update one PR with the result, so upstream changes arrive as a PR of
+# their own instead of failing unrelated ones. A PR opened with
+# GITHUB_TOKEN doesn't start other workflows, so this job runs validate's
+# checks on the synced tree itself.
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install skills-ref==0.1.1
+      - name: Sync vendored skills from upstream
+        id: sync
+        run: |
+          scripts/sync-vendored.sh | tee sync.log
+          if git diff --quiet -- vendor; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check the synced tree
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          set -e
+          scripts/sync-vendored.sh --check
+          for skill in */SKILL.md; do agentskills validate "$(dirname "$skill")"; done
+          for skill in vendor/*/SKILL.md; do agentskills validate "$(dirname "$skill")"; done
+      - name: Open or update the sync PR
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          branch=sync-vendored
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add vendor
+          git commit -m "vendor: sync from upstream" -m "$(grep ' <- ' sync.log)"
+          git push --force origin "$branch"
+          body="The vendored skills moved upstream; scripts/sync-vendored.sh copied them:
+
+          $(grep ' <- ' sync.log | sed 's/^/- /')
+
+          Opened by the sync-vendored workflow, which ran validate's checks on this tree. A PR opened with the workflow's token doesn't start other workflows; close and reopen it to run validate here."
+          if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --body "$body"
+          else
+            gh pr create --head "$branch" --title "vendor: sync from upstream" --body "$body"
+          fi
