@@ -5,7 +5,8 @@ name: sync-vendored
 # or update one PR with the result, so upstream changes arrive as a PR of
 # their own instead of failing unrelated ones. A PR opened with
 # GITHUB_TOKEN doesn't start other workflows, so this job runs validate's
-# checks on the synced tree itself.
+# checks on the synced tree itself (the vendored skills are copied as they
+# are, so only the repo's own skills are validated, as in validate).
 on:
   schedule:
     - cron: "30 6 * * 1"
@@ -39,7 +40,6 @@ jobs:
           set -e
           scripts/sync-vendored.sh --check
           for skill in */SKILL.md; do agentskills validate "$(dirname "$skill")"; done
-          for skill in vendor/*/SKILL.md; do agentskills validate "$(dirname "$skill")"; done
       - name: Open or update the sync PR
         if: steps.sync.outputs.changed == 'true'
         env:
