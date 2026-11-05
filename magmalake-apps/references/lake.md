@@ -215,9 +215,10 @@ has the whole grammar.
 
 ## Readers outside the project
 
-The public bucket allows `s3:GetObject` and `s3:ListBucket` to anyone, and
-the project's resource control policy refuses other accounts' signed
-requests, so outside readers read **unsigned**:
+The lake's bucket is private unless the stack was made with `orca aws up
+--public-data true`. Then it allows `s3:GetObject` and `s3:ListBucket` to
+anyone, and the project's resource control policy refuses other accounts'
+signed requests, so outside readers read **unsigned**:
 
 ```sh
 aws s3 ls --no-sign-request s3://mlake-public-<account>/warehouse/demo/days/metadata/
@@ -226,4 +227,6 @@ aws s3 ls --no-sign-request s3://mlake-public-<account>/warehouse/demo/days/meta
 DuckDB and pyiceberg read it in their anonymous modes, from the table's
 newest `metadata/*.metadata.json`. The bucket allows CORS `GET` from any
 origin, so a browser page (DuckDB-Wasm) can read it too. Downloads are
-billed to the project.
+billed to the project at S3's egress price; to share a lake that's read a
+lot, mirror it to a store with free egress that speaks the S3 API (such as
+Cloudflare R2) and point readers' S3 endpoint at it.
