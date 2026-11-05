@@ -31,9 +31,10 @@ orca), so it is reviewed as one file and deleted as one stack:
   your apps as containers that restart with the instance;
 - **orca's bucket** (private): run state, and logs under `logs/`, kept
   30 days;
-- **the public bucket** `mlake-public-<account>`, the lake, readable by
-  anyone, with CORS `GET` from any origin: both `ORCA_WAREHOUSE` and
-  `ORCA_PUBLIC_WAREHOUSE` are `s3://<it>/warehouse`;
+- **the lake's bucket** `mlake-public-<account>`: both `ORCA_WAREHOUSE`
+  and `ORCA_PUBLIC_WAREHOUSE` are `s3://<it>/warehouse`. It's private unless
+  the stack's `PublicData` is true (`orca aws up --public-data true`), when
+  anyone may read it, with CORS `GET` from any origin;
 - the ECR repository `orca`, which keeps the last 5 images;
 - a role for run instances (both buckets, the image, secrets under `orca/`)
   and one for the control instance (both buckets, the image, starting and

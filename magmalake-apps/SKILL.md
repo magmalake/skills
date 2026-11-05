@@ -86,17 +86,19 @@ orca finds tables through `ORCA_WAREHOUSE`, the root of an Iceberg
 filesystem catalog: dataset `demo.days` is the table at
 `<warehouse>/demo/days`. The warehouse is a local directory or an S3
 location (`s3://bucket/warehouse`). On AWS the stack puts it in the
-public bucket:
+lake's bucket, `mlake-public-<account>`:
 
 | Variable | Value on AWS | Who reads it |
 |---|---|---|
-| `ORCA_WAREHOUSE` | `s3://mlake-public-<account>/warehouse` | pipelines (through `orca.tables`), apps, anyone unsigned |
+| `ORCA_WAREHOUSE` | `s3://mlake-public-<account>/warehouse` | pipelines (through `orca.tables`), apps; anyone unsigned only with `--public-data true` |
 | `ORCA_PUBLIC_WAREHOUSE` | the same location | code that wants to say "the public one" |
 
-orca's own bucket stays private and holds only logs and run state. Anyone
-may read the lake, unsigned: `aws s3 ls --no-sign-request
-s3://mlake-public-<account>/warehouse/`, or DuckDB and pyiceberg in their
-anonymous modes. So every table a pipeline writes is public.
+orca's own bucket holds only logs and run state. The lake's bucket is
+private by default (orca 0.3.6+): the instances read and write it with their
+roles. `orca aws up --public-data true` lets anyone read it unsigned (`aws s3
+ls --no-sign-request s3://mlake-public-<account>/warehouse/`, or DuckDB and
+pyiceberg in their anonymous modes), so every table a pipeline writes
+becomes public, and downloads are billed to the project.
 
 Put shared table definitions in `src/lake.mojo`, so pipelines and apps
 agree on names and schemas. The samples below import three things from it,
