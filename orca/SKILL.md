@@ -204,6 +204,14 @@ comptime Report = Step["report", Int64, Int, report, Mapped, after=Load,
   ```
 
   A run without `ORCA_DATABASE_URL` never finds earlier commits.
+- **Workers can write data files that a step commits** with
+  `append_files`, so the rows never cross to the step. In the dista task,
+  `write_files(load_dataset("lake.events"), batches)` (or a `FileWriter`,
+  a batch at a time) writes uncommitted files and returns `DataFiles`, a
+  dista `Codec`; return it, or a struct holding it beside plain fields.
+  The step calls `append_files(ctx, table, got)`: one append, with
+  `append`'s `writes=` check and retry rule. Check `find_commit` before
+  sending the tasks, so a retry doesn't write the files again.
 - `scan(ctx, table(ctx, "lake.events"))` is a `TableScan` at a **pinned**
   snapshot: a retry or resume sees the same data. Then `.to_batches()`.
 
