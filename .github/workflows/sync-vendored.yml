@@ -1,0 +1,72 @@
+name: sync-vendored
+
+# Every Monday, after validate's own check, copy the vendored skills from
+# their upstream main (scripts/sync-vendored.sh) and, when they moved, push
+# the result to the sync-vendored branch and open or update one issue
+# linking it, so upstream changes arrive on their own instead of failing
+# unrelated PRs. The organization doesn't let workflows open PRs, so a
+# person opens it from the issue's link; validate then runs on it as on any
+# PR. This job checks the synced tree first (the vendored skills are copied
+# as they are, so only the repo's own skills are validated, as in validate).
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install skills-ref==0.1.1
+      - name: Sync vendored skills from upstream
+        id: sync
+        run: |
+          scripts/sync-vendored.sh | tee sync.log
+          if git diff --quiet -- vendor; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check the synced tree
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          set -e
+          scripts/sync-vendored.sh --check
+          for skill in */SKILL.md; do agentskills validate "$(dirname "$skill")"; done
+      - name: Push the sync branch and open or update its issue
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          branch=sync-vendored
+          title="Vendored skills moved upstream"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add vendor
+          git commit -m "vendor: sync from upstream" -m "$(grep ' <- ' sync.log)"
+          git push --force origin "$branch"
+          compare="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1"
+          body="The vendored skills moved upstream; scripts/sync-vendored.sh copied them to the \`$branch\` branch, and its tree passes validate's checks:
+
+          $(grep ' <- ' sync.log | sed 's/^/- /')
+
+          **[Open the PR]($compare)**, then merge it and close this issue. Until it's merged, validate's vendored check fails on other PRs.
+
+          Updated by the sync-vendored workflow, run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+          n=$(gh issue list --state open --search "in:title \"$title\"" --json number,title \
+            -q "[.[] | select(.title == \"$title\")][0].number")
+          if [ -n "$n" ]; then
+            gh issue edit "$n" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
