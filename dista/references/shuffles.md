@@ -3,16 +3,16 @@
 A shuffle's map task makes one partition per reducer, and each reducer takes
 its partition number beside every map task's part. dista has one task shape
 for each (from `src/dista/task.mojo` in
-[dista.mojo's repository](https://github.com/magmalake/dista.mojo)):
+[dista's repository](https://github.com/morca-dev/dista)):
 
 ```
 TaskMany[A_, X, f: def(A_) thin raises -> Seq[X]]
 TaskWith[A_, X, R_, f: def(A_, Seq[X]) thin raises -> R_]
 ```
 
-This program was built and run against dista 0.2.0:
+CI builds this program against dista 0.5.1:
 
-```mojo
+```mojo compile
 from dista import Runtime, Seq, TaskMany, TaskWith
 
 def split3(x: Int) -> Seq[Int]:

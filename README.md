@@ -2,9 +2,9 @@
 
 Agent skills for building data pipelines and apps in Mojo on
 [magmalake](https://magmalake.org): orchestrating them with
-[orca](https://github.com/magmalake/orca.mojo), distributing them with
-[dista](https://github.com/magmalake/dista.mojo), reading and writing Iceberg
-and Parquet tables fast, and deploying a project to AWS.
+[morca](https://github.com/morca-dev/morca), distributing them with
+[dista](https://github.com/morca-dev/dista), reading and writing Iceberg
+and Parquet tables fast, and deploying a project to a Hetzner server.
 They follow the [Agent Skills spec](https://agentskills.io/specification), so
 any coding agent that reads skills can use them.
 
@@ -48,7 +48,7 @@ npx skills add magmalake/skills
 
 This puts all six skills where your agent looks for them. Update them later
 with `npx skills update`, or install one at a time with
-`npx skills add magmalake/skills --skill orca`.
+`npx skills add magmalake/skills --skill morca`.
 
 `npx skills` installs only the skills inside one repository, so this one
 keeps unchanged copies of `mojo-syntax` and `mojoshelf-consume` in
@@ -71,17 +71,23 @@ agent's skills folder; for Claude Code that is `~/.claude/skills/`.
   measurement behind it, from magmalake's own benchmarks. It replaces
   `writing-performant-data-code`, which is now part of it.
 
-- [`orca`](orca/SKILL.md): pipelines in Mojo with orca: steps, partitions
-  by month, day or name (keyed), schedules and sensors, steps that call
-  dista, Iceberg tables with pinned reads and commits a retry recognises,
-  and the `orca` command: registering, backfilling, the scheduler, the UI,
-  the runners, autoscaling and secrets.
-- [`dista`](dista/SKILL.md): distributed Mojo with dista: tasks and the
-  refs they return, actors and checkpoints, local and cluster mode, the
-  `dista` command, draining and autoscaling.
+- [`morca`](morca/SKILL.md) (morca-mojo 0.30.0): pipelines in Mojo with
+  morca, which was called orca until 0.25.0: steps, partitions by month,
+  day, hour or name (keyed), schedules and sensors, steps that call dista
+  or a Rust worker, Iceberg tables through `morca.tables` with pinned reads
+  and commits a retry recognises, the `morca` command (registering,
+  backfilling and fill requests, retiring, status and config), morca.toml
+  (requests and grants, fills, priority, overlays) and worker pools. It
+  replaces the `orca` skill.
+- [`dista`](dista/SKILL.md) (dista-mojo 0.5.1): distributed Mojo with
+  dista: tasks and the refs they return, actors and checkpoints, local and
+  cluster mode and its fork rules, several tasks per worker sized from a
+  morca grant, the `dista` command, draining and autoscaling.
 - [`magmalake-apps`](magmalake-apps/SKILL.md): a whole project on
-  magmalake: its layout, a lake on Iceberg over S3, a flare app reading it,
-  developing locally, and deploying to AWS with `orca aws`.
+  magmalake: its layout, a lake of Iceberg tables in object storage, a
+  flare app reading it, developing locally, its image on morca's runtime,
+  and deploying it as a Hetzner stack with `deploy.sh` and `promote.sh`
+  (AWS's `morca aws` briefly).
 
 From elsewhere, installed with them:
 
@@ -109,6 +115,46 @@ A skill from another repository goes in as a plugin entry of its own in
 `.claude-plugin/marketplace.json`, fetched from that repository, and in the
 `magmalake` plugin's `dependencies`; for `npx skills`, add it to
 `scripts/sync-vendored.sh` and run the script.
+
+## Examples that CI compiles
+
+A fenced block marked `mojo compile` instead of `mojo` is a whole program,
+and CI builds it against the morca and dista versions the skills describe,
+pinned in [`ci/pixi.toml`](ci/pixi.toml):
+
+````markdown
+```mojo compile
+from morca import Ctx, Month, Mapped, Step
+...
+```
+````
+
+A block without `def main` gets an empty one. `mojo compile
+name=src/lake.mojo` writes the block to that path instead of building it:
+a helper module the skill's other blocks import (`-I src` and the skill's
+folder are on the path). Plain `mojo` blocks are excerpts and aren't
+built. Locally:
+
+```sh
+pixi install --manifest-path ci/pixi.toml      # builds morca and dista: many minutes
+pixi run --manifest-path ci/pixi.toml python3 -I scripts/compile-examples.py
+pixi run --manifest-path ci/pixi.toml python3 -I scripts/compile-examples.py morca/SKILL.md
+```
+
+## When morca or dista releases
+
+The skills follow a release of morca-mojo or dista-mojo that changes its
+public API (morca's `src/morca/__init__.mojo` and the modules it lists;
+anything with a minor-version note in their changelogs):
+
+1. Re-pin `ci/pixi.toml` to the new versions: in `ci/`, `pixi shelf add
+   morca-mojo@<version> dista-mojo@<version>`, then commit `pixi.toml` and
+   `pixi.lock`.
+2. Run the compile check above, and fix the examples it fails on.
+3. Read the release's changelog for what the skills describe in prose
+   (commands, morca.toml keys, deploy steps), update the version each
+   SKILL.md names, and bump `metadata.version` in
+   `.claude-plugin/marketplace.json`.
 
 ## License
 

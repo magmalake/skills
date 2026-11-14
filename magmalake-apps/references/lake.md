@@ -1,142 +1,114 @@
 # The lake: tables, writes and reads
 
-The tables live in an Iceberg **filesystem catalog**: a warehouse root, and
-under it `<namespace>/<table>/metadata` and `.../data`. orca names a table by
-its dataset, `namespace.table`. Nothing else (no REST catalog, no Glue) is
-involved, so any reader that can list the bucket can open a table.
-
-## src/lake.mojo, the shared definitions
-
-Pipelines and apps both import this, so they agree on names and schemas.
-Build every program with `-I src` (the image's build does).
-
-```mojo
-"""The lake's tables, shared by pipelines and apps."""
-
-from std.os import getenv
-
-from iceberg.catalog.filesystem import FilesystemCatalog, Table
-from iceberg.io import FileIO
-from iceberg.schema import Schema
-
-comptime DAYS = "demo.days"
-
-comptime DAYS_SCHEMA = (
-    '{"schema-id":0,"type":"struct","fields":['
-    '{"id":1,"name":"day","required":true,"type":"string"},'
-    '{"id":2,"name":"events","required":true,"type":"long"}]}'
-)
-
-
-def days_schema() raises -> Schema:
-    return Schema.parse(DAYS_SCHEMA)
-
-
-def warehouse() -> String:
-    """The lake: ORCA_WAREHOUSE (on AWS, the public bucket), else a directory."""
-    return getenv("ORCA_WAREHOUSE", "build/warehouse")
-
-
-def load(namespace: String, name: String) raises -> Table:
-    var root = warehouse()
-    if "://" in root and not root.startswith("file://"):
-        return FilesystemCatalog(String(root.rstrip("/")), FileIO()).load_table(
-            namespace, name
-        )
-    return FilesystemCatalog.local(root).load_table(namespace, name)
-```
-
-`load` does what `orca.tables` does internally: a local directory through
-`FilesystemCatalog.local`, an `s3://` root through `FileIO()`, which takes
-credentials from the `AWS_*` environment, else the EC2 instance role, else
-reads unsigned. Outside a step, `orca.tables.load_dataset("demo.days")`
-also loads a dataset from `ORCA_WAREHOUSE`, without checks or records, but
-raises when the variable isn't set; `load` falls back to `build/warehouse`.
+The tables live in an Iceberg **filesystem catalog**: a warehouse root
+(`MORCA_WAREHOUSE`), and under it `<namespace>/<table>/metadata` and
+`.../data`. morca names a table by its dataset, `namespace.table`. There is
+no REST catalog or Glue, so any reader that can list the bucket can open a
+table. Everything here goes through `morca.tables` (morca 0.30.0), whose
+work runs in the liblake library the morca package ships; the morca skill's
+`references/tables.md` has its whole API.
 
 ## Schemas and partitions
 
 A schema is Iceberg's JSON, with a field id for each column. Types used in
-magmalake code: `int`, `long`, `double`, `string`, `timestamp`,
-`timestamptz`, `date`, `boolean`, and nested `struct`, `list` and `map`.
+magmalake code: `int`, `long`, `double`, `string`, `boolean`, `date`,
+`timestamp`, `timestamptz`, and nested `struct`, `list` and `map`. A
+partition spec names a source field id, a partition field id (1000 and
+up), a name and a transform (`identity`, `hour`, `day`, `month`, `year`,
+`bucket[N]`, `truncate[W]`):
 
-A partitioned table, from `examples/taxi/tlc.mojo` in
-[orca's repository](https://github.com/magmalake/orca.mojo) (month of
-field 2):
+```mojo compile
+from morca.tables import BatchBuilder, PartitionField, PartitionSpec, Schema, parse_transform
+from parquet import RecordBatch
 
-```mojo
-from iceberg.transforms import PartitionField, PartitionSpec, parse_transform
+comptime VISITS_SCHEMA = (
+    '{"schema-id":0,"type":"struct","fields":['
+    '{"id":1,"name":"id","required":true,"type":"long"},'
+    '{"id":2,"name":"at","required":true,"type":"timestamptz"},'
+    '{"id":3,"name":"addr","required":false,"type":{"type":"struct","fields":['
+    '{"id":4,"name":"city","required":true,"type":"string"},'
+    '{"id":5,"name":"zip","required":false,"type":"int"}]}}]}'
+)
 
-def spec() raises -> PartitionSpec:
+
+def visits_spec() -> PartitionSpec:
+    """Partitioned by the day of `at` (field 2)."""
     return PartitionSpec(
-        0,
-        [PartitionField.single(2, 1000, "pickup_month", parse_transform("month"))],
+        0, [PartitionField.single(2, 1000, "at_day", parse_transform("day"))]
     )
+
+
+def visits(micros: Int64) raises -> RecordBatch:
+    var b = BatchBuilder(Schema.parse(VISITS_SCHEMA))
+    var id = b.col("id")
+    var at = b.col("at")
+    var addr = b.col("addr")
+    var city = b.col("addr.city")
+    var zip = b.col("addr.zip")
+    for i in range(3):
+        b.add_int(id, Int64(i))
+        b.add_int(at, micros + Int64(i) * 3_600_000_000)   # microseconds
+        if i == 2:
+            b.add_null(addr)            # a null struct: its fields get one too
+        else:
+            b.add_str(city, "Berlin")
+            b.add_null(zip)
+            b.end_struct(addr)
+    return b^.build()
+
+
+def main() raises:
+    var batch = visits(1_704_067_200_000_000)   # 2024-01-01T00:00Z
+    print(batch.num_rows, "rows")               # num_rows is a field
 ```
 
-Pass it as `ensure_table(ctx, dataset, schema, spec())`. The arguments of
-`PartitionField.single` are the source field id, the partition field id
-(1000 and up), its name and the transform (`identity`, `hour`, `day`, `month`,
-`year`, `bucket[N]`, `truncate[W]`).
+Pass the spec as `ensure_table(ctx, dataset, schema, spec)`. A
+`timestamptz` or `timestamp` value is microseconds since the epoch, a
+`date` days since it; all go in with `add_int`. A list column takes its
+elements on `<col>.element` and then `end_list(col)`; a map's are
+`<col>.key` and `<col>.value`.
 
 ## Writing from a step
 
 - **Declare** the dataset in the `Step`: `writes=[DAYS]` to write it,
-  `reads=[DAYS]` to read it. `orca.tables` refuses anything else, so the
+  `reads=[DAYS]` to read it, `replaces=[DAYS]` when a rerun should replace
+  a partition's rows. `morca.tables` refuses anything else, so the
   scheduler's lineage and sensors stay true.
-- **`ensure_table(ctx, dataset, schema, spec)`** returns the table, creating
-  it empty the first time; two runs creating it at once is handled.
-- **`append(ctx, table, batches)`** writes `List[RecordBatch]` as one
-  snapshot and returns its id. A retry of the step finds the snapshot its
-  earlier attempt committed and returns it instead of writing again.
-- **`commit(ctx, table, operation, files)`** commits data files you wrote
-  yourself, such as a compaction's `OP_REPLACE` (see `compact` in orca's
-  `examples/taxi/taxi.mojo`). Call `find_commit(ctx, table)`
-  first so a retry doesn't write the files again.
-- **`scan(ctx, table)`** reads a declared input at a pinned snapshot: a
-  retry or a resume sees the same data as the first attempt.
-- **`table(ctx, dataset)`** loads a dataset the step declared.
+- **`ensure_table(ctx, dataset, schema, spec)`** returns the table,
+  creating it the first time, and adds new columns the schema has.
+- **`append(ctx, table, batches)`** commits `List[RecordBatch]` as one
+  snapshot and returns its id; a retry returns the snapshot its earlier
+  attempt committed instead of writing again.
+- **Rows already in Parquet** come as batches from a reader; append them as
+  they are, and the writer casts each column to the table's type.
+  `RecordBatch.num_rows` is a field, not a method.
 
-Rows from Mojo values go through `iceberg.batch`:
+## Reading in an app
 
-```mojo
-from iceberg.batch import ColumnBuilder, batch_of
-from iceberg.values import Datum
-
-    var day = ColumnBuilder.of(schema, 1)     # by field id
-    var events = ColumnBuilder.of(schema, 2)
-    day.add(Datum.string_("2024-01-01"))
-    events.add(Datum.long_(10))
-    # events.add_null() for a missing value in an optional column
-    var batch = batch_of([day^, events^])
-```
-
-A `timestamptz` value is microseconds since the epoch, as a `Datum` of
-that kind (`P_TIMESTAMP` for a `timestamp` without zone):
+An app has no `Ctx`, so it loads a dataset with `load_dataset("demo.days")`
+from `MORCA_WAREHOUSE` (which raises when the variable isn't set) and scans
+it at the current snapshot:
 
 ```mojo
-from iceberg.types import P_TIMESTAMPTZ
-
-    at.add(Datum.integral(P_TIMESTAMPTZ, micros))   # micros: Int64
+var batches = (
+    load_dataset(DAYS)
+    .scan()
+    .filter('[">=","day","2024-01-02"]')
+    .select(["day", "events"])
+    .to_batches()
+)
+for b in batches:
+    var day = strings_of(b, "day")      # List[Optional[String]]
+    var events = ints_of(b, "events")   # List[Optional[Int64]]
 ```
 
-Nested columns take one JSON value per row, from
-[iceberg.mojo's README](https://github.com/magmalake/iceberg.mojo):
-
-```mojo
-from iceberg.batch import ColumnBuilder, NestedBuilder, batch_of_columns
-
-    var ids = ColumnBuilder.of(schema, 1)
-    var addr = NestedBuilder.of(schema, 2)      # struct<city, zip>
-    ids.add(Datum.long_(1))
-    addr.add('{"city":"eu","zip":10}')
-    var batch = batch_of_columns([ids.build_tree(), addr.build()])
-```
-
-Rows already in Parquet come as batches from
-`ParquetReader[AllCodecs].open(path)` (`has_next()`, `read_batch()`), as in
-orca's `examples/taxi/tlc.mojo`; append them as they are. Iceberg's writer
-casts each column to the table's type. A `RecordBatch`'s row count is the
-field `b.num_rows`.
+`to_batch_reader()` reads a batch at a time instead, `count()` counts the
+rows, and `use_snapshot(id)` reads an older snapshot. Filters are JSON
+S-expressions: `["=", "col", v]`, `["<", ...]`, `["in", "col", [...]]`,
+`["is-null", "col"]`, `["starts-with", "col", "p"]`, `["and", f, g]`,
+`["or", f, g]`, `["not", f]`; literals take the column's type.
+[iceberg.mojo's README](https://github.com/magmalake/iceberg.mojo) has the
+whole grammar.
 
 ## Gzip input
 
@@ -144,10 +116,12 @@ field `b.num_rows`.
 framing. Read the RFC 1952 header yourself, inflate the body with
 `inflate_at`, which reports where the stream ended, and skip the 8-byte
 trailer; repeat for concatenated members (GH Archive's files have them).
-It decompressed 690 MB of JSON in 0.8 s on an M-series Mac:
+It decompressed 690 MB of JSON in 0.8 s on an M-series Mac. `pixi shelf
+add deflate-mojo` if the project doesn't have it yet:
 
-```mojo
+```mojo compile
 from deflate import inflate_at
+
 
 def gunzip(data: Span[UInt8, _]) raises -> List[UInt8]:
     var out = List[UInt8]()
@@ -187,46 +161,13 @@ def gunzip(data: Span[UInt8, _]) raises -> List[UInt8]:
 
 It doesn't check the CRC32.
 
-## Reading in an app
-
-```mojo
-var t = load("demo", "days")
-var rows = (
-    t.scan()
-    .filter('[">=","day","2024-01-02"]')
-    .select(["day", "events"])
-    .to_table()
-)
-```
-
-The result (`ScanResult`) has `num_rows()` (a method, unlike
-`RecordBatch.num_rows`), `num_columns()`, `name(i)`,
-`value(row, col)` (a `Datum`; `.repr_()` prints it, `.valid` is false for
-null), `cell(row, col)` (one value as JSON), `to_json()` and `to_csv()`.
-`to_batches()` returns `List[RecordBatch]` instead, for large tables.
-`t.scan().use_snapshot(id)` reads an older snapshot, and `t.refresh()`
-reloads the table's current metadata.
-
-Filters are JSON S-expressions: `["=", "col", v]`, `["<", ...]`,
-`["in", "col", [...]]`, `["is-null", "col"]`, `["starts-with", "col", "p"]`,
-`["and", f, g]`, `["or", f, g]`, `["not", f]`. Literals are typed by the
-column. [iceberg.mojo's README](https://github.com/magmalake/iceberg.mojo)
-has the whole grammar.
-
 ## Readers outside the project
 
-The lake's bucket is private unless the stack was made with `orca aws up
---public-data true`. Then it allows `s3:GetObject` and `s3:ListBucket` to
-anyone, and the project's resource control policy refuses other accounts'
-signed requests, so outside readers read **unsigned**:
-
-```sh
-aws s3 ls --no-sign-request s3://mlake-public-<account>/warehouse/demo/days/metadata/
-```
-
-DuckDB and pyiceberg read it in their anonymous modes, from the table's
-newest `metadata/*.metadata.json`. The bucket allows CORS `GET` from any
-origin, so a browser page (DuckDB-Wasm) can read it too. Downloads are
-billed to the project at S3's egress price; to share a lake that's read a
-lot, mirror it to a store with free egress that speaks the S3 API (such as
-Cloudflare R2) and point readers' S3 endpoint at it.
+A table is plain files in the bucket, so DuckDB, pyiceberg or Spark read
+it from its newest `metadata/*.metadata.json` with the bucket's S3
+credentials and endpoint (Hetzner Object Storage is
+`https://<location>.your-objectstorage.com`). A bucket made public for
+reading lets them read unsigned, and downloads are then billed to the
+project; to share a lake that's read a lot, mirror it to a store with free
+egress that speaks the S3 API (such as Cloudflare R2). A dataset's Data
+tab in morca's UI is public unless `[datasets."ns.t"] public = false`.

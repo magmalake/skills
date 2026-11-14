@@ -41,3 +41,23 @@ jobs:
       # copied unchanged for `npx skills add`. They must match upstream main.
       - name: Check vendored skills match upstream
         run: scripts/sync-vendored.sh --check
+
+  # The `mojo compile` blocks of every skill, built against the morca and
+  # dista that ci/pixi.toml pins (README.md, "Examples that CI compiles").
+  examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # In a cached repository git's background maintenance races rattler's
+      # `git clone --local` (morca's docs/project-ci.md, mojo-census#135).
+      - name: Turn git maintenance off
+        run: git config --global maintenance.auto false && git config --global gc.auto 0
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.78.0
+          manifest-path: ci/pixi.toml
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Compile the examples
+        run: pixi run --manifest-path ci/pixi.toml python3 -I scripts/compile-examples.py --jobs 4
