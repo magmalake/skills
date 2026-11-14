@@ -1,6 +1,6 @@
 ---
 name: mojo-data-performance
-description: Write fast Mojo data code and find out where its time goes, from the per-row loops of a pipeline down to the readers, writers and codecs under it, and take benchmark numbers that survive being checked. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, orca), or that filters, groups, joins or aggregates rows; when making a parser, reader, writer, encoder or codec faster; when writing a benchmark or comparing against pyarrow, parquet-cpp, arrow-rs or Ray; when a number looks too good or moves between runs; or before claiming a speedup. Pairs with Modular's mojo-syntax skill.
+description: Write fast Mojo data code and find out where its time goes, from the per-row loops of a pipeline down to the readers, writers and codecs under it, and take benchmark numbers that survive being checked. Use when writing or reviewing Mojo code that loops over Arrow record batches, Parquet or Iceberg scans (arrow-mlake, parquet.mojo, iceberg.mojo, dista, morca), or that filters, groups, joins or aggregates rows; when making a parser, reader, writer, encoder or codec faster; when writing a benchmark or comparing against pyarrow, parquet-cpp, arrow-rs or Ray; when a number looks too good or moves between runs; or before claiming a speedup. Pairs with Modular's mojo-syntax skill.
 license: Apache-2.0
 metadata:
   author: magmalake

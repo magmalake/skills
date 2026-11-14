@@ -1,8 +1,8 @@
 # Running dista: environment, metrics, Kubernetes, a provider loop
 
-All of this is from dista.mojo 0.2.0's repository
-([magmalake/dista.mojo](https://github.com/magmalake/dista.mojo); the
-installed tin is compiled only): `src/dista/*.mojo`, `DESIGN.md`, `deploy/`
+All of this is from dista-mojo 0.5.1's repository
+([morca-dev/dista](https://github.com/morca-dev/dista), formerly
+magmalake/dista.mojo; the installed tin is compiled only): `src/dista/*.mojo`, `DESIGN.md`, `deploy/`
 and `tests/*.sh`.
 
 ## Environment variables
@@ -26,7 +26,27 @@ and `tests/*.sh`.
 | `DISTA_MAX_QUEUED_BYTES` | 1 GiB | queued argument bytes before `remote` blocks; 0 turns it off |
 | `DISTA_MAX_DRIVER_BUFFER` | 256 MiB | result bytes waiting for a driver that isn't reading before its tasks wait |
 | `DISTA_METRICS_PORT` | off | serve Prometheus metrics at `/metrics` on this port (0 picks one and prints `dista metrics on port N`) |
+| `DISTA_WORKER_SLOTS` | 1 | tasks a worker runs at once on threads of its own; 0 is one per core, `auto` sizes it from the run's grant (below) |
+| `DISTA_TASK_MEMORY_MB` | unset | with `auto`, what one task may use; unset, dista learns it from tasks that ran alone |
+| `DISTA_TOKEN`, `DISTA_TOKEN_FILE` | unset | a cluster token: the head and workers refuse connections that don't open with it |
+| `DISTA_TASK_TIMEOUT` | no limit | seconds after which a running task fails |
+| `DISTA_KEEPALIVE_SECONDS` | 10 | TCP keepalive: a silent peer fails after this plus 3 probes (about 25 s); 0 turns it off |
+| `DISTA_PEER_CONNECT_TIMEOUT` | 5 | seconds a worker or driver waits to reach a peer it fetches from |
+| `DISTA_ORPHAN_SECONDS` | 120 | results no driver comes back for are freed after this |
+| `DISTA_WARN_HELD` | 100,000 | the head logs a driver holding this many objects (0: never) |
 | `DISTA_DEBUG` | off | `1`: a worker logs each task's inputs as they're assembled |
+
+**`DISTA_WORKER_SLOTS=auto`** (0.5.0 on) reads the grant morca gives a run,
+`MORCA_GRANT_CPUS` and `MORCA_GRANT_MEMORY_MB`, shared among a local run's
+forked workers (a worker started on its own takes the whole grant). Slots
+are the granted CPUs; the memory budget admits as many tasks as fit, each
+at `DISTA_TASK_MEMORY_MB` or its measured footprint, and the rest wait at
+the head for a worker with room. It starts one task in flight and raises
+the count while throughput rises, backing off on memory pressure (PSI),
+spills or slower tasks. Without a grant (EC2, Kubernetes) it is a slot per
+core and no budget. A number works as before: that many slots, no budget.
+With slots above 1, **tasks must be thread-safe**, and N slots hold N
+tasks' inputs and results in memory.
 
 On Kubernetes each pod has its own `/dev/shm`, an in-memory volume whose
 limit evicts the pod instead of failing a write, so the AWS manifests set
@@ -62,7 +82,7 @@ StatefulSet running `dista head --port 6390` behind a headless Service
 `DISTA_HEAD=dista-head:6390`, `DISTA_ADVERTISE` from the pod IP and
 `DISTA_METRICS_PORT=9090`. A driver is a Job with
 `DISTA_HEAD=dista-head:6390` (`deploy/k8s/driver-job.yaml`). The head exits
-at SIGTERM; workers drain. A long-lived cluster without orca can be scaled
+at SIGTERM; workers drain. A long-lived cluster without morca can be scaled
 by a HorizontalPodAutoscaler on `dista_queue_depth`.
 
 ## A provider loop around `dista scale --once`

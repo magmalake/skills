@@ -24,6 +24,11 @@ def decode_only_ms(scan: TableScan, opts: ScanOptions) raises -> Int:
     return (Int(perf_counter_ns()) - t0) // 1_000_000
 ```
 
+This is iceberg.mojo's `TableScan`. A morca step's scan from
+`morca.tables` (morca 0.29.0 on) takes no `ScanOptions` and its reader has
+no `raise_if_failed`: there, call `to_batch_reader()` and let
+`next_batch()` raise.
+
 It has to be the same scan: the same columns (`select`), the same filter,
 and the same `ScanOptions` (`num_workers`, `files_at_once`). With fewer
 columns it decodes less, and the comparison flatters the pipeline.

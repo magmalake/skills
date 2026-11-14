@@ -1,22 +1,23 @@
 ---
 name: dista
-description: Write and run distributed Mojo programs with dista, magmalake's Ray-style task framework, where one compiled binary is the driver, the head and every worker. Use when writing or reviewing Mojo code that imports dista or mentions distributed Mojo, a remote task, `Task`/`Task2`/`TaskMany`/`TaskWith`, `ObjectRef`, `rt.remote`, `rt.get`, `Seq`, an actor with methods or checkpoints, a cluster, a head, workers, `DISTA_ROLE`/`DISTA_HEAD`, the `dista` command (status, drain, scale, timeline, stop), draining, autoscaling, or a dista runtime inside an orca pipeline step; and when a dista job hangs, is refused with a registry mismatch, or fails with a lost result. Pairs with Modular's mojo-syntax skill and magmalake's mojo-data-performance skill.
+description: Write and run distributed Mojo programs with dista, magmalake's Ray-style task framework, where one compiled binary is the driver, the head and every worker. Use when writing or reviewing Mojo code that imports dista or mentions distributed Mojo, a remote task, `Task`/`Task2`/`TaskMany`/`TaskWith`, `ObjectRef`, `rt.remote`, `rt.get`, `Seq`, an actor with methods or checkpoints, a cluster, a head, workers, `DISTA_ROLE`/`DISTA_HEAD`, `DISTA_WORKER_SLOTS` (including `auto` from a morca grant), `DISTA_TOKEN`, the `dista` command (status, drain, scale, timeline, stop), draining, autoscaling, or a dista runtime inside a morca pipeline step; and when a dista job hangs, is refused with a registry mismatch, or fails with a lost result. Pairs with Modular's mojo-syntax skill and magmalake's mojo-data-performance skill.
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.2"
+  version: "0.3"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
 Every line here is loaded into an agent's context, so stay brief, but write
 whole phrases a newcomer can follow: a list of bare nouns is not brief, it is
 cryptic. Every rule carries the measurement that justifies it, from a real
-magmalake run, with where it came from. Put code and long stories in
+magmalake run, with where it came from. Blocks fenced as `mojo compile` are
+built by CI against dista 0.5.1; keep them whole programs. Put code and long stories in
 references/, and keep this file to what an agent must know before writing
 the first loop.
 -->
 
-dista (the `dista-mojo` tin, 0.2.0, Mojo 1.2.0) lets you mark a Mojo
+dista (the `dista-mojo` tin, 0.5.1, Mojo 1.2.0) lets you mark a Mojo
 function remote, call it, and have it run on other processes or Kubernetes
 pods. Every process runs **the same compiled binary**, so a task message is
 a function ID plus encoded arguments: no code is shipped, nothing is pickled,
@@ -24,21 +25,22 @@ and columnar data travels as Arrow.
 
 What dista is **not**: a cluster manager. It creates no pods or machines.
 It uses every worker that joins, drains the ones it is told to stop, and
-says how many it wants. Kubernetes, a shell loop or orca starts and stops
+says how many it wants. Kubernetes, a shell loop or morca starts and stops
 them. It also doesn't rebuild results lost with a dead worker (no lineage
 reconstruction): the job fails, naming the result, and an orchestrator runs
 it again.
 
 The installed environment holds dista only as a compiled `dista.mojoc`.
 Read its source on GitHub,
-[magmalake/dista.mojo](https://github.com/magmalake/dista.mojo), at the
+[morca-dev/dista](https://github.com/morca-dev/dista) (it moved there
+from magmalake/dista.mojo on 2026-11-11), at the
 `rev` your `pixi.toml` pins, or in pixi's git cache
 (`ls -d ~/Library/Caches/rattler/cache/git-v0/checkouts/*/<rev's first 7>*`
 on macOS, `~/.cache/rattler/...` on Linux). File paths cited here are in
 that checkout.
 
 ```sh
-pixi shelf add dista-mojo    # brings arrow-mlake, memory-region and objectstore
+pixi shelf add dista-mojo    # brings arrow-mlake, memory-region, objectstore, threads
 ```
 
 Write the Mojo itself with the `mojo-syntax` skill loaded; for fast per-row
@@ -48,10 +50,9 @@ work inside tasks, see `mojo-data-performance`.
 
 A task is a **top-level `def`** declared once with its argument and result
 types, because Mojo 1.2 can't infer a function's result type. The registry
-is the `Runtime`'s parameter list. Every complete sample in this file was
-built and run against dista 0.2.0.
+is the `Runtime`'s parameter list.
 
-```mojo
+```mojo compile
 from dista import ObjectRef, Runtime, Seq, Task, Task2
 
 def square(x: Int) -> Int:
@@ -81,6 +82,10 @@ def main() raises:
     print(rt.get(rt.remote[Total](maps)))     # 332833500
     print(rt.get(rt.remote[Square](r)))       # 2401: a ref as the argument
     rt.release(maps)
+    var total = 0
+    for i in range(10):
+        total += rt.take(rt.remote[Square](i))   # get, then release
+    print(total)                              # 285
 ```
 
 - **Arity:** `Task[A, R, f]` takes one argument, `Task2[A, B, R, f]` two,
@@ -94,7 +99,11 @@ def main() raises:
   input exists, and fails with the input's error if one failed.
 - **`rt.release(ref)` (or a list) frees a result** at the head and on its
   worker once no pending task needs it; `get` on it raises afterwards.
-  Results are otherwise kept until the runtime ends.
+  Results are otherwise kept until the runtime ends, so a driver that reads
+  each result once should use **`rt.take(ref)`**, which gets and releases.
+- **`rt.cancel(ref)`** (or a list): a task that hasn't run never does, and
+  `get` raises `cancelled`. **`rt.get(ref, timeout=seconds)`** raises an
+  error starting `timed out` and leaves the ref valid.
 - Also on `Runtime`: `rt.ready(r)` (finished yet, without waiting),
   `rt.location(r)` (the holding worker's `ip:port` and node-store file, or
   `""` if the result came back inline), `rt.stats()`, `rt.bytes_fetched()`
@@ -133,7 +142,7 @@ mapped from shared memory on the same host or fetched across hosts.
 An actor is state on a worker of its own. Its calls run one at a time, in
 the order they were made, and return `ObjectRef`s like tasks do.
 
-```mojo
+```mojo compile
 from dista import Actor, ActorHandle, Client, CtxTask, Method, ObjectRef, Runtime
 
 @fieldwise_init
@@ -211,6 +220,37 @@ Workers and drivers retry reaching the head for `DISTA_CONNECT_TIMEOUT`
 seconds (default 60), so start order doesn't matter. A head started with
 `dista head` instead is generic: it serves several programs at once and
 gives each driver's tasks only to workers built from the same binary.
+With `DISTA_TOKEN` (or `DISTA_TOKEN_FILE`) set on every process, the head
+and workers refuse any connection that doesn't open with it; morca sets one
+per run when a run spans machines. It authenticates, it doesn't encrypt.
+
+**Fork rules for local mode.** The workers are `fork`ed copies of the
+driver, so what the driver did before the `Runtime` exists is in every
+worker:
+
+- Start no threads before the `Runtime`: a library that has (a Rust
+  library's tokio runtime, a thread pool) breaks the forked children. Load
+  such libraries after it, as morca's `rust_step` does.
+- On macOS, don't touch libcurl before it either: an S3 read (objectstore,
+  an `s3://` warehouse) initialises Objective-C code, and macOS then kills
+  each forked worker (`+[NSCharacterSet initialize] may have been in
+  progress in another thread when fork() was called`), so the job fails
+  with `no workers left`. Linux is unaffected; morca#135 tracks it.
+- Set the environment the workers need before the `Runtime`: they get a
+  copy of it at the fork, and nothing set afterwards.
+
+## Several tasks per worker
+
+`DISTA_WORKER_SLOTS=N` runs up to N tasks at once on a worker's own threads
+while its event loop keeps serving fetches; 0 is one per core, and the
+default, 1, runs one at a time with no threads. **Tasks must then be
+thread-safe**, and N slots hold N tasks' inputs and results in memory.
+`DISTA_WORKER_SLOTS=auto` (0.5.0 on) sizes the worker from the grant morca
+gives its run (`MORCA_GRANT_CPUS`, `MORCA_GRANT_MEMORY_MB`, shared by a
+local run's workers): slots from the CPUs, and only as many tasks in flight
+as fit the memory, starting at one and adapting to throughput and memory
+pressure. Tasks that don't fit wait at the head. Without a grant it is a
+slot per core and no memory budget.
 
 ## The `dista` command
 
@@ -247,7 +287,7 @@ and `draining`. `dista.scale` (import it from `dista.scale`; it is not
 re-exported from `dista`) turns that into a decision, with no clock or I/O
 of its own:
 
-```mojo
+```mojo compile
 from dista.scale import Demand, Policy, decide
 
 def main() raises:
@@ -267,15 +307,15 @@ passes back next time with `pending`, the workers started but not yet
 joined. `dista scale --once --min 0 --max 6 ...` prints it as lines;
 `tests/autoscale.sh` drives a job from 0 workers to 6 and back to 0 with it.
 
-## Under orca
+## Under morca
 
-An orca pipeline declares its tasks and workers, and orca starts the
-runtime once per run. A step never builds its own `Runtime`; it borrows
-the run's (an excerpt):
+A morca pipeline declares its tasks and workers, and morca starts the
+runtime once per run, before the first step. A step never builds its own
+`Runtime`; it borrows the run's (an excerpt):
 
 ```mojo
 comptime Trips = Task[Day, Int, trips]
-comptime FanoutTasks = Tasks[Trips]                   # from orca
+comptime FanoutTasks = Tasks[Trips]                   # from morca
 
 def month_trips(mut ctx: Ctx, m: Month) raises -> Int:
     ref rt = ctx.runtime[FanoutTasks]()
@@ -286,11 +326,15 @@ comptime Fanout = Pipeline["fanout", MonthTrips, AllTrips, tasks=FanoutTasks, wo
 ```
 
 The full program is `examples/fanout.mojo` in
-[orca.mojo](https://github.com/magmalake/orca.mojo).
+[morca](https://github.com/morca-dev/morca), and the morca skill has a
+compiled one. A run on one host forks `MORCA_WORKERS` workers (default
+4); on a stack, put `DISTA_WORKER_SLOTS = "auto"` in the
+pipeline's `env` in morca.toml and give it a `cpus` and `memory_gb`
+request, so its workers follow its grant.
 
-orca runs a run's steps in order and a mapped step's partitions one after
+morca runs a run's steps in order and a mapped step's partitions one after
 another, so a step that calls one task and waits for it is serial. Send
-all of a step's work with `rt.remote` first, then `rt.get` each ref.
+all of a step's work with `rt.remote` first, then `rt.take` each ref.
 
 ## Common mistakes
 
@@ -307,7 +351,7 @@ all of a step's work with `rt.remote` first, then `rt.get` each ref.
   `DISTA_TASK_RETRIES` (default 3): keep tasks and methods safe to repeat.
 - **Expecting a lost result to come back.** A result held only by a dead
   worker fails with `result <id> lost: its worker went away`, as does every
-  task waiting on it. Rerun the job, or let orca retry the step.
+  task waiting on it. Rerun the job, or let morca retry the step.
 - **Unreleased refs** keep small results in the head's memory. And
   `remote` blocking past `DISTA_MAX_QUEUED` tasks (default 100,000) is
   backpressure, not a hang.

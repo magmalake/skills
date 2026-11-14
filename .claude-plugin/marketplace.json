@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Agent skills for building data pipelines and apps in Mojo on magmalake",
-    "version": "0.4"
+    "version": "0.5"
   },
   "renames": {
     "skills": "magmalake"
@@ -19,7 +19,7 @@
       "strict": false,
       "skills": [
         "./mojo-data-performance",
-        "./orca",
+        "./morca",
         "./dista",
         "./magmalake-apps"
       ],

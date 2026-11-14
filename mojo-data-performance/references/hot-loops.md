@@ -1,7 +1,7 @@
 # The per-row loop, before and after
 
 This is the group-by from dista's shuffle benchmark (`deploy/shuffle.mojo` in
-magmalake/dista.mojo, PR #58): trips are grouped by pickup zone, dropoff
+magmalake/dista.mojo, now morca-dev/dista, PR #58): trips are grouped by pickup zone, dropoff
 zone and hour of day, and each group adds up a count and three sums. It ran
 over 77M rows of NYC taxi data on one thread. Both versions give the same
 answer, bit for bit.
