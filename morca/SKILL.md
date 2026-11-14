@@ -40,7 +40,7 @@ needs Modular's channel, pixi's build preview and the compiler first:
 ```sh
 pixi init lake -c https://conda.modular.com/max -c conda-forge \
     -c https://repo.prefix.dev/modular-community && cd lake
-sed -i.bak 's/^\[workspace\]/[workspace]\npreview = ["pixi-build"]/' pixi.toml
+# In pixi.toml's [workspace], add:   preview = ["pixi-build"]
 pixi add "mojo-compiler==1.2.0"
 pixi workspace platform add linux-aarch64   # Hetzner CAX and Graviton images
 pixi shelf add morca-mojo                    # brings dista-mojo, arrow-mlake-mojo, ...
