@@ -80,9 +80,25 @@ and its retry skips the steps already done.
   seconds later. For a download that isn't published yet, or an API out of
   requests.
 - **`outdated()`** is true once a newer version of the pipeline leads (a
-  deploy registered other code, or its scheduler drains). Morca does
-  nothing about it; a long step checks it between units of work and ends
-  early, so a deploy doesn't wait for it. `outdated_why()` says why.
+  deploy registered other code, or its scheduler drains). Morca never stops
+  a run for it, so **a long-running step must check it between units of
+  work and return as soon as it's true.** A run that doesn't check holds the
+  deploy: the old scheduler drains until the run ends or `DRAIN_SECONDS`
+  runs out, and then the run is killed and queued again. Stop where the
+  work is saved (after a commit, a poll, a batch), and while waiting, sleep
+  in short steps and check as you go. `outdated_why()` says why. The
+  census's `mojo_live` polls GitHub for an hour and checks after each poll
+  and every 5 s while it waits for the next:
+
+  ```mojo
+  while True:
+      poll(ctx)                     # one unit of work, saved
+      if outdated():
+          ctx.log(String("outdated (", outdated_why(), "): stopping"))
+          break                     # return; the new code polls the rest
+      while now() < next and not outdated():
+          sleep(5.0)
+  ```
 - **`auto_count(name, default, memory_mb_each=0)`** reads a count from the
   variable `name`: a number as given, `default` if unset, and for `"auto"`
   the run's granted CPUs, at most its granted memory over
