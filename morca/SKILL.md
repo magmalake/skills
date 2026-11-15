@@ -4,7 +4,7 @@ description: Write, run and schedule data pipelines in Mojo with morca (formerly
 license: Apache-2.0
 metadata:
   author: magmalake
-  version: "0.3"
+  version: "0.3.1"
 ---
 
 <!-- EDITORIAL GUIDELINES FOR THIS SKILL FILE
@@ -384,6 +384,10 @@ pools, `morca worker`, and Rust steps with the `morca-worker` crate.
 - **Changing code without registering**: rebuild and `register` again;
   queued runs move to the new code, and a running one can ask `outdated()`
   whether to stop.
+- **A long step that never checks `outdated()`**: a deploy waits for it up
+  to `DRAIN_SECONDS`, then kills it. Check between units of work and return
+  as soon as it's true (references/steps.md has the census's `mojo_live`
+  loop).
 - **`backfill --rerun` on a step that appends**: refused, since the rows
   would be there twice. Declare the dataset in `replaces=`.
 - **`fills = "all"` on a keyed pipeline or a sensor**: `register` refuses
