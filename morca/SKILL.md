@@ -276,7 +276,7 @@ comptime Repos = Pipeline[
 
 The key type is `Name` (`String(name)` for its text). `--partitions` takes
 names, `@all` or `@file:<path>`. A keyed pipeline has no calendar, so
-`schedule=` and `fills=` don't compile with it. With `sensor=True` the
+`schedule=` and `fire=` don't compile with it. With `sensor=True` the
 scheduler starts runs when a dataset the pipeline reads gets a new
 snapshot. **Register a sensor before the data it senses:** snapshots that
 exist when it's registered count as seen; backfill them instead. To work on

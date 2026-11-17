@@ -54,7 +54,7 @@ Pipeline[
     tasks=NoTasks,                # Tasks[...] of the dista tasks its steps call
     partitions=Monthly[],         # Monthly["2024-01"], Daily[...], Hourly[...], Keyed[ds, col]
     schedule=NoSchedule,          # Cron["0 3 * * *"] or Cron[expr, "Europe/Berlin"]
-    fills=Previous,               # a fire runs the partition before it; Current: the one it's in
+    fire=Previous,                # a fire runs the partition before it; Current: the one it's in (`fills=` is the deprecated spelling)
     catchup=True,                 # False: after downtime, only the latest missed fire
     max_runs=1,                   # runs at once (morca.toml overrides, "auto" there)
     run_retries=3,                # the scheduler starts a failed run again
