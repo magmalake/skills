@@ -45,8 +45,8 @@ morca locate <pipeline binary> ... [--root <dir>]
 ```text
 morca backfill [--rerun [--allow-append]] [--preview|--as-fill] <pipeline> KEYS
 morca backfill --cancel <pipeline>
-morca start <pipeline> KEYS                  one run over them all
-morca cancel <pipeline> KEYS|@all            its queued, running and retrying runs
+morca start <pipeline> KEYS                  one run over them all, trigger `cli`
+morca cancel <pipeline> KEYS|@all            its queued, deferred and running runs, and failed ones due a retry
 morca cancel <run>
 morca resume [--allow-new-code] <run>
 morca rerun [--allow-append] <run> <step>    a new run, from that step on
